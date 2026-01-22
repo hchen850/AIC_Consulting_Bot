@@ -3,6 +3,8 @@ import ChatHeader from "./components/ChatHeader";
 import Composer from "./components/Composer";
 import MessageBubble from "./components/MessageBubble";
 import type { ChatMessage } from "./types/chat";
+import { sendToBot } from "./api/chat";
+
 
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -29,18 +31,35 @@ export default function App() {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [sorted.length]);
 
-  function handleSend(text: string) {
-    // User message
+  async function handleSend(text: string) {
+    // Add the user's message immediately
     setMessages((prev) => [...prev, makeMsg("user", text)]);
 
-    // Placeholder “bot reply”
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        makeMsg("assistant", `Echo (placeholder): ${text}`),
-      ]);
-    }, 250);
+    // Add a temporary assistant message while waiting
+    const typingId = uid();
+    setMessages((prev) => [
+      ...prev,
+      { id: typingId, role: "assistant", content: "Typing…", createdAt: Date.now() },
+    ]);
+
+    try {
+      // Call your FastAPI backend (which calls Ollama)
+      const data = await sendToBot(text);
+
+      // Replace "Typing…" with the real reply
+      setMessages((prev) =>
+        prev.map((m) => (m.id === typingId ? { ...m, content: data.reply } : m))
+      );
+    } catch (err) {
+      // Replace "Typing…" with an error message
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setMessages((prev) =>
+        prev.map((m) => (m.id === typingId ? { ...m, content: `Error: ${msg}` } : m))
+      );
+    }
   }
+
+
 
   function clearChat() {
     setMessages([makeMsg("assistant", "Chat cleared. Send a message!")]);
