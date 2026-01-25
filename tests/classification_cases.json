@@ -1,0 +1,130 @@
+[
+  {
+    "input": "Do I need to trademark my startup name?",
+    "expected": "legal",
+    "actual": {
+      "category": "legal",
+      "confidence": 0.95,
+      "flags": [
+        "trademark"
+      ],
+      "rationale": "Detected legal-related topic keywords."
+    }
+  },
+  {
+    "input": "Should I form an LLC or a C-Corp?",
+    "expected": "legal",
+    "actual": {
+      "category": "legal",
+      "confidence": 0.95,
+      "flags": [
+        "incorporation"
+      ],
+      "rationale": "Detected legal-related topic keywords."
+    }
+  },
+  {
+    "input": "Do we need an NDA before pitching our idea?",
+    "expected": "legal",
+    "actual": {
+      "category": "legal",
+      "confidence": 0.95,
+      "flags": [
+        "nda"
+      ],
+      "rationale": "Detected legal-related topic keywords."
+    }
+  },
+  {
+    "input": "Are independent contractors allowed to do this work?",
+    "expected": "legal",
+    "actual": {
+      "category": "legal",
+      "confidence": 0.9,
+      "flags": [
+        "employment law"
+      ],
+      "rationale": "Inquiry about employment status"
+    }
+  },
+  {
+    "input": "Should I patent my idea before launching?\n",
+    "expected": "legal",
+    "actual": {
+      "category": "legal",
+      "confidence": 0.95,
+      "flags": [
+        "patent"
+      ],
+      "rationale": "Detected legal-related topic keywords."
+    }
+  },
+  {
+    "input": "How do I find my first customers?",
+    "expected": "business",
+    "actual": {
+      "category": "business",
+      "confidence": 0.95,
+      "flags": [],
+      "rationale": "Discussing customer acquisition strategies"
+    }
+  },
+  {
+    "input": "What should our MVP focus on?",
+    "expected": "business",
+    "actual": {
+      "category": "business",
+      "confidence": 0.75,
+      "flags": [
+        "product"
+      ],
+      "rationale": "Detected business-related topic keywords."
+    }
+  },
+  {
+    "input": "How do we validate our idea before building?",
+    "expected": "business",
+    "actual": {
+      "category": "business",
+      "confidence": 0.9,
+      "flags": [],
+      "rationale": "Assess market demand and competition"
+    }
+  },
+  {
+    "input": "What metrics should an early-stage startup track?\n",
+    "expected": "business",
+    "actual": {
+      "category": "business",
+      "confidence": 0.9,
+      "flags": [
+        "startup_metrics"
+      ],
+      "rationale": "Monitoring key performance indicators (KPIs) is essential for early-stage startups."
+    }
+  },
+  {
+    "input": "How do we protect our idea?",
+    "expected": "legal",
+    "actual": {
+      "category": "legal",
+      "confidence": 0.95,
+      "flags": [
+        "intellectual property"
+      ],
+      "rationale": "Discussing intellectual property protection"
+    }
+  },
+  {
+    "input": "What should we set up before launching?",
+    "expected": "legal",
+    "actual": {
+      "category": "business",
+      "confidence": 0.8,
+      "flags": [
+        "strategy"
+      ],
+      "rationale": "Setting up business strategy before launch"
+    }
+  }
+]
