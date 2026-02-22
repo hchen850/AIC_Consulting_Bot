@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 
-from ciocca_module import handle_ciocca_query, is_ciocca_question
+from ciocca_module import handle_ciocca_query
 
 # ── Config ──────────────────────────────────────────────────────────────────
 OLLAMA_URL = "http://localhost:11434/api/chat"
@@ -43,17 +43,6 @@ def chat():
     return {"message": "Hello from SCU Chatbot API"}
 
 
-# ── Classifier ───────────────────────────────────────────────────────────────
-def classify_message(message: str, override: str | None) -> str:
-    """
-    Returns category: 'ciocca' | 'legal' | 'general'
-    Uses override if provided, otherwise auto-classifies.
-    """
-    if override:
-        return override.lower()
-    if is_ciocca_question(message):
-        return "ciocca"
-    return "general"
 
 
 # ── General Ollama handler ────────────────────────────────────────────────────
@@ -81,17 +70,14 @@ def handle_general_query(message: str) -> dict:
 @app.post("/bot")
 def bot(req: ChatRequest):
     """
-    Main chat endpoint. Classifies the message and routes to the correct handler.
-    Returns: { reply, sources, category, used_fallback }
+    Expects category to be set by upstream classifier.
+    category="ciocca" → Ciocca/BEACH RAG module
+    category="general" → Ollama general handler
     """
-    category = classify_message(req.message, req.category)
-
-    if category == "ciocca":
-        result = handle_ciocca_query(req.message)
+    if req.category == "ciocca":
+        return handle_ciocca_query(req.message)
     else:
-        result = handle_general_query(req.message)
-
-    return result
+        return handle_general_query(req.message)
 
 
 # ── Ciocca-only endpoint (direct) ─────────────────────────────────────────────
