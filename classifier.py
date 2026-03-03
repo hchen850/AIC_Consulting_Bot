@@ -156,11 +156,10 @@ def llm_classify(text: str) -> ClassifyResponse:
     data = r.json()
     content = data["message"]["content"].strip()
 
-    # Parse JSON robustly (the model sometimes adds whitespace/newlines)
     try:
         obj = json.loads(content)
     except json.JSONDecodeError:
-        # Fail safe: if anything goes wrong, treat as legal.
+        # Fail safe: if anything goes wrong, treat as legal. (better to assume its legal to be safe)
         return ClassifyResponse(
             category="legal",
             confidence=0.6,
@@ -173,7 +172,7 @@ def llm_classify(text: str) -> ClassifyResponse:
     flags = obj.get("flags", [])
     rationale = obj.get("rationale", "")
 
-    # Hard safety: enforce allowed values + bounds
+
     if cat not in ("legal", "business"):
         cat = "legal"
     try:
@@ -187,7 +186,7 @@ def llm_classify(text: str) -> ClassifyResponse:
     if not isinstance(rationale, str):
         rationale = ""
 
-    # If confidence is low, still default to legal (policy)
+    # If confidence is low, still default to legal 
     if conf < 0.55:
         cat = "legal"
         flags = list(set(flags + ["low_confidence"]))
@@ -216,10 +215,10 @@ def chat():
 
 @app.post("/bot")
 def bot(req: ChatRequest):
-    # Step 1: classify (rules first, then LLM)
+    # Step 1: classify into business or legal
     classification = rule_based_classify(req.message) or llm_classify(req.message)
 
-    # Step 2: choose responder behavior
+    # Step 2: LLM decision
     if classification.category == "legal":
         reply = ollama_chat(LEGAL_REFUSAL_PROMPT, req.message)
     else:
@@ -232,9 +231,9 @@ def bot(req: ChatRequest):
 
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):
-    # 1) rules
+    # rules
     ruled = rule_based_classify(req.text)
     if ruled:
         return ruled
-    # 2) LLM fallback
+    #LLM fallback
     return llm_classify(req.text)
