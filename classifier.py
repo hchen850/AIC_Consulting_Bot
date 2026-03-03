@@ -1,44 +1,18 @@
-from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import requests
-from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Literal, Optional, Dict, Any
+from typing import List, Literal, Optional
 import re
 import json
-
-
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "mistral"
 
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-class ChatRequest(BaseModel):
-    message: str
-
-class ClassifyRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=5000)
-
-
 class ClassifyResponse(BaseModel):
-    category: Literal["legal", "business"]
+    category: Literal["legal", "business", "other"]
     confidence: float = Field(..., ge=0.0, le=1.0)
     flags: List[str] = []
-    rationale: str = ""  
-
-
+    rationale: str = ""
 
 
 LEGAL_PATTERNS = [
@@ -62,9 +36,11 @@ BUSINESS_HINTS = [
     (r"\boperations\b|\bprocess\b|\bhiring\b|\bteam\b", "operations"),
 ]
 
+
 def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     t = text.lower()
 
+    # 1) legal first
     legal_hits = []
     for pat, flag in LEGAL_PATTERNS:
         if re.search(pat, t):
@@ -78,6 +54,7 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
             rationale="Detected legal-related topic keywords."
         )
 
+    # 2) business next
     business_hits = []
     for pat, flag in BUSINESS_HINTS:
         if re.search(pat, t):
@@ -91,54 +68,38 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
             rationale="Detected business-related topic keywords."
         )
 
-    return None  
+    # 3) other (Ciocca Center informational/website) last
+    # Logic: must mention ciocca AND show some informational/website intent
+    mentions_ciocca = re.search(r"\bciocca\b|\bciocca center\b", t) is not None
+    info_or_website_intent = re.search(
+        r"\bwhat is\b|\bwhat does\b|\bwhat can\b|\bservices?\b|\bhelp with\b|\boffer(s|ed)?\b|\babout\b|\bwebsite\b|\bsite\b|\bpage\b|\blink\b|\bwhere can i find\b|\bcontact\b",
+        t
+    ) is not None
+
+    if mentions_ciocca and info_or_website_intent:
+        return ClassifyResponse(
+            category="other",
+            confidence=0.85,
+            flags=["ciocca_center"],
+            rationale="Detected Ciocca Center informational inquiry."
+        )
+
+    return None
+
 
 CLASSIFIER_SYSTEM_PROMPT = """You are a strict classifier for a university consulting chatbot.
 
 Classify the user's message into exactly one category:
 - "legal": trademarks/IP, contracts, incorporation/entity formation, employment law, compliance/regulatory, liability, taxes
 - "business": product, customers, marketing, pricing, operations, strategy, fundraising (non-legal framing)
+- "other": informational questions about the Ciocca Center or its website (what it is, what it offers, how it works)
 
 Rules:
 - If you are unsure, choose "legal".
 - Do not provide advice.
 - Output JSON only, exactly matching this schema:
-{"category":"legal"|"business","confidence":0.0-1.0,"flags":["..."],"rationale":"..."}
+{"category":"legal"|"business"|"other","confidence":0.0-1.0,"flags":["..."],"rationale":"..."}
 - rationale must be one short sentence, no more than 12 words.
-"""
-
-LEGAL_REFUSAL_PROMPT = """You are the BEACH Consulting Assistant.
-
-The user asked a legal question. You must:
-- Refuse to provide legal advice.
-- Encourage them to consult a qualified legal professional or a BEACH coordinator.
-- Offer a safe alternative: you can help them clarify business priorities or prepare a summary for consultants.
-
-Do NOT ask follow-up questions about legal details.
-Do NOT provide legal steps, definitions, or recommendations.
-
-Write 4–8 sentences. Professional, calm, no emojis.
-"""
-
-BUSINESS_ASSISTANT_PROMPT = """You are the BEACH Consulting Assistant, used to support BEACH clients
-(startups and small businesses) before they meet with student consultants.
-
-Your purpose is NOT to give advice. Your purpose is to:
-1) Clarify the client’s situation
-2) Identify priorities and next steps (at a high level, not prescriptive)
-3) Collect concise, relevant information for BEACH consultants
-
-Rules:
-- Ask 3–5 targeted follow-up questions max total.
-- Use neutral frameworks and plain language.
-- Avoid prescriptive advice (avoid “you should”).
-- Do not provide legal, tax, or regulatory advice.
-- Do not mention internal reasoning.
-
-Output format:
-1) A short helpful sentence acknowledging the topic.
-2) 3–5 bullet follow-up questions.
-3) A short section titled "Summary for BEACH Consultants:" with 3–6 bullets.
 """
 
 
@@ -151,7 +112,8 @@ def llm_classify(text: str) -> ClassifyResponse:
         ],
         "stream": False
     }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=30)
+
+    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
     r.raise_for_status()
     data = r.json()
     content = data["message"]["content"].strip()
@@ -159,7 +121,6 @@ def llm_classify(text: str) -> ClassifyResponse:
     try:
         obj = json.loads(content)
     except json.JSONDecodeError:
-        # Fail safe: if anything goes wrong, treat as legal. (better to assume its legal to be safe)
         return ClassifyResponse(
             category="legal",
             confidence=0.6,
@@ -172,9 +133,9 @@ def llm_classify(text: str) -> ClassifyResponse:
     flags = obj.get("flags", [])
     rationale = obj.get("rationale", "")
 
-
-    if cat not in ("legal", "business"):
+    if cat not in ("legal", "business", "other"):
         cat = "legal"
+
     try:
         conf = float(conf)
     except Exception:
@@ -186,7 +147,6 @@ def llm_classify(text: str) -> ClassifyResponse:
     if not isinstance(rationale, str):
         rationale = ""
 
-    # If confidence is low, still default to legal 
     if conf < 0.55:
         cat = "legal"
         flags = list(set(flags + ["low_confidence"]))
@@ -194,46 +154,12 @@ def llm_classify(text: str) -> ClassifyResponse:
 
     return ClassifyResponse(category=cat, confidence=conf, flags=flags, rationale=rationale)
 
-def ollama_chat(system_prompt: str, user_message: str) -> str:
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        "stream": False
-    }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-    r.raise_for_status()
-    data = r.json()
-    return data["message"]["content"]
 
-
-@app.get("/chat")
-def chat():
-    return "Hello world"
-
-@app.post("/bot")
-def bot(req: ChatRequest):
-    # Step 1: classify into business or legal
-    classification = rule_based_classify(req.message) or llm_classify(req.message)
-
-    # Step 2: LLM decision
-    if classification.category == "legal":
-        reply = ollama_chat(LEGAL_REFUSAL_PROMPT, req.message)
-    else:
-        reply = ollama_chat(BUSINESS_ASSISTANT_PROMPT, req.message)
-
-    return {
-        "reply": reply,
-        "classification": classification.model_dump(),  # shows what happened (great for debugging)
-    }
-
-@app.post("/classify", response_model=ClassifyResponse)
-def classify(req: ClassifyRequest):
-    # rules
-    ruled = rule_based_classify(req.text)
-    if ruled:
-        return ruled
-    #LLM fallback
-    return llm_classify(req.text)
+def classify_text(text: str) -> dict:
+    """
+    Returns a plain dict suitable for routing.
+    Example:
+    {"category":"business","confidence":0.75,"flags":[...],"rationale":"..."}
+    """
+    classification = rule_based_classify(text) or llm_classify(text)
+    return classification.model_dump()

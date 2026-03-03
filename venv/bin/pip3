@@ -1,6 +1,4 @@
-#!/bin/sh
-'''exec' "/Users/heidiishinchen/Desktop/Consulting Bot/venv/bin/python" "$0" "$@"
-' '''
+#!/Users/declannagel/Desktop/AIC/AIC_Consulting_Bot/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
