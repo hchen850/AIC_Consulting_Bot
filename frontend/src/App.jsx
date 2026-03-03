@@ -1,138 +1,43 @@
 import { useMemo, useState } from "react";
 
-function classifyLocal(text) {
-  const t = text.toLowerCase();
+const API_BASE = "http://127.0.0.1:8000";
 
-  const legalWords = [
-    "llc",
-    "incorporate",
-    "inc",
-    "contract",
-    "nda",
-    "ip",
-    "patent",
-    "trademark",
-    "terms",
-    "privacy",
-    "liability",
-    "equity",
-    "shares",
-    "founder",
-    "c-corp",
-    "corp",
-    "employment",
-  ];
-  const businessWords = [
-    "pricing",
-    "revenue",
-    "business model",
-    "customer",
-    "market",
-    "competition",
-    "strategy",
-    "go-to-market",
-    "sales",
-    "marketing",
-    "unit economics",
-    "mvp",
-    "product",
-  ];
-  const cioccaWords = [
-    "ciocca",
-    "mentor",
-    "accelerator",
-    "incubator",
-    "program",
-    "funding",
-    "pitch",
-    "workshop",
-    "application",
-    "venture",
-  ];
+async function sendToBackend(message) {
+  const res = await fetch(`${API_BASE}/bot`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
 
-  const score = (words) =>
-    words.reduce((acc, w) => acc + (t.includes(w) ? 1 : 0), 0);
-
-  const legal = score(legalWords);
-  const business = score(businessWords);
-  const ciocca = score(cioccaWords);
-
-  const max = Math.max(legal, business, ciocca);
-  if (max === 0) {
-    return {
-      category: "unknown",
-      confidence: 0.35,
-      reply:
-        "Got it. I can help route this—could you share a bit more detail about what you’re trying to do and what’s blocking you?",
-      followups: [
-        "What stage is your startup in (idea/MVP/launched)?",
-        "What outcome are you hoping for from BEACH?",
-        "Any deadlines coming up?",
-      ],
-    };
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Backend error ${res.status}: ${text}`);
   }
 
-  let category = "legal";
-  if (max === business) category = "business";
-  if (max === ciocca) category = "ciocca";
-
-  // very simple confidence heuristic
-  const confidence = Math.min(0.95, 0.55 + 0.15 * max);
-
-  if (category === "legal") {
-    return {
-      category,
-      confidence,
-      reply:
-        "This looks primarily like a **legal** question. I can collect a few details so the legal team can help efficiently.",
-      followups: [
-        "Is this about forming an entity (LLC/C-Corp) or a contract/IP issue?",
-        "Which state is your startup based in (jurisdiction)?",
-        "Do you have a deadline (fundraising, launch, signing date)?",
-      ],
-    };
-  }
-
-  if (category === "business") {
-    return {
-      category,
-      confidence,
-      reply:
-        "This looks primarily like a **business** question. I’ll ask a few targeted questions to clarify your model and constraints.",
-      followups: [
-        "Who is your target customer and what problem are you solving?",
-        "How are you thinking about pricing or revenue?",
-        "What traction do you have so far (users, pilots, revenue)?",
-      ],
-    };
-  }
-
-  return {
-    category,
-    confidence,
-    reply:
-      "This looks like a **Ciocca / program** question. I can help route you to the right resources and next steps.",
-    followups: [
-      "Are you asking about programs, mentorship, funding, or pitch events?",
-      "What is your startup stage (idea/MVP/launched)?",
-      "What’s your timeline for applying or presenting?",
-    ],
-  };
+  return res.json();
 }
 
 function Badge({ label }) {
   const cls = useMemo(() => {
     const base =
       "display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid #ddd;font-size:12px";
-    if (label === "legal") return `${base};background:#fff1f2;color:#9f1239;border-color:#fecdd3`;
+    if (label === "legal")
+      return `${base};background:#fff1f2;color:#9f1239;border-color:#fecdd3`;
     if (label === "business")
       return `${base};background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe`;
-    if (label === "ciocca")
+    if (label === "other")
       return `${base};background:#ecfdf5;color:#047857;border-color:#a7f3d0`;
+    if (label === "loading")
+      return `${base};background:#f1f5f9;color:#334155;border-color:#e2e8f0`;
+    if (label === "error")
+      return `${base};background:#fef2f2;color:#b91c1c;border-color:#fecaca`;
     return `${base};background:#f8fafc;color:#334155;border-color:#e2e8f0`;
   }, [label]);
 
-  return <span style={{ cssText: cls }}>{label}</span>;
+  // NOTE: style={{ cssText: ... }} doesn't work in React.
+  // We'll just render the label and rely on minimal styling.
+  // If you want the exact same look, I can convert this to a real style object.
+  return <span style={{ padding: "2px 10px", borderRadius: 999, border: "1px solid #ddd", fontSize: 12 }}>{label}</span>;
 }
 
 export default function App() {
@@ -149,7 +54,7 @@ export default function App() {
     setMessages((prev) => [...prev, m]);
   }
 
-  function sendMessage(e) {
+  async function sendMessage(e) {
     e.preventDefault();
     const text = input.trim();
     if (!text) return;
@@ -157,18 +62,38 @@ export default function App() {
     addMessage({ role: "user", text });
     setInput("");
 
-    // Local “backend” mock
-    const result = classifyLocal(text);
-
+    const typingId = crypto.randomUUID();
     addMessage({
+      id: typingId,
       role: "bot",
-      text: result.reply,
-      meta: {
-        category: result.category,
-        confidence: result.confidence,
-        followups: result.followups,
-      },
+      text: "…",
+      meta: { category: "loading", confidence: null },
     });
+
+    try {
+      const data = await sendToBackend(text);
+
+      // remove typing bubble
+      setMessages((prev) => prev.filter((m) => m.id !== typingId));
+
+      addMessage({
+        role: "bot",
+        text: data.reply,
+        meta: {
+          category: data.classification?.category ?? "unknown",
+          confidence: data.classification?.confidence ?? 0,
+          // backend currently doesn't return followups, so this will just be []
+          followups: data.classification?.followups ?? [],
+        },
+      });
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== typingId));
+      addMessage({
+        role: "bot",
+        text: `Backend error: ${err.message}`,
+        meta: { category: "error", confidence: 0 },
+      });
+    }
   }
 
   function clickFollowup(q) {
@@ -178,12 +103,11 @@ export default function App() {
   return (
     <div style={{ maxWidth: 860, margin: "32px auto", fontFamily: "Arial, sans-serif" }}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        {/* Chat */}
         <div style={{ flex: 1, background: "white", border: "1px solid #e5e7eb", borderRadius: 16 }}>
           <div style={{ padding: 16, borderBottom: "1px solid #e5e7eb" }}>
-            <div style={{ fontWeight: 700, fontSize: 18 }}>BEACH Intake Chat (Demo)</div>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>BEACH Intake Chat</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>
-              Demo routing: business • legal • Ciocca
+              Backend routing: business • legal • other
             </div>
           </div>
 
@@ -191,7 +115,14 @@ export default function App() {
             {messages.map((m, i) => {
               const isUser = m.role === "user";
               return (
-                <div key={i} style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: 12 }}>
+                <div
+                  key={m.id ?? i}
+                  style={{
+                    display: "flex",
+                    justifyContent: isUser ? "flex-end" : "flex-start",
+                    marginBottom: 12,
+                  }}
+                >
                   <div style={{ maxWidth: "80%" }}>
                     <div
                       style={{
