@@ -126,5 +126,25 @@
       ],
       "rationale": "Setting up business strategy before launch"
     }
+  },
+  {
+    "input": "How do I contact the Ciocca Center?",
+    "expected": "other",
+    "actual": {
+      "category": "business",
+      "confidence": 0.9,
+      "flags": [],
+      "rationale": "Inquiry about business center contact"
+    }
+  },
+  {
+    "input": "Can the Ciocca Center help me with my startup idea?",
+    "expected": "other",
+    "actual": {
+      "category": "business",
+      "confidence": 0.8,
+      "flags": [],
+      "rationale": "assisting with startup ideas"
+    }
   }
 ]
