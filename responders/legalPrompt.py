@@ -1,19 +1,30 @@
 import requests
 import pandas as pd
 from datetime import datetime
+import os
+import re
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "mistral"
 
-# Updated prompt to generate both the user response AND a summary for Excel
-LEGAL_REFUSAL_PROMPT = """You are the BEACH Consulting Assistant.
-The user asked a legal question. 
+LEGAL_REFUSAL_PROMPT = """You are the BEACH Startup Strategy Assistant. 
+The user asked a legal question, but you cannot provide legal advice. Instead, you will try to orient the user towards business strategy questions that can help them clarify their needs and prepare for a conversation with a legal professional.
 
-1. Write a 4–8 sentence professional refusal. No legal advice. Calm, no emojis. Briefly explain why you can't answer.
-2. After the refusal, add a line break and then write: 'SUMMARY: [Write a 1-sentence summary of the user's core concern for management]'.
+Do the following:
+1. CLEARLY STATE: Acknowledge the topic and briefly state that as an AI, you provide business strategy guidance, not legal advice or document drafting.
+2. THE BUSINESS FOLLOW-UP: Ask 2-3 deep questions about their business model related to that legal topic. (e.g., If they ask about IP, ask about their unique value proposition or trade secrets).
+3. THE LEGAL LOG: List 1-2 specific questions they should save for a qualified legal professional or BEACH coordinator and note on the form this bot lives on in the questions box.
+
+TONE: Encouraging, professional, and analytical. No emojis.
+
+REQUIRED STRUCTURE:
+[Your friendly response and Business Follow-ups]
+
+PROJECT NAME: [Extract the project name from the user's prompt. If they did not provide one, write exactly 'NONE']
+SUMMARY: [1-sentence summary of the startup's initial legal concern for the Excel log]
 """
 
-def get_ai_response(message: str) -> str:
+def _get_ai_response(message: str) -> str:
     payload = {
         "model": MODEL_NAME,
         "messages": [
@@ -22,46 +33,59 @@ def get_ai_response(message: str) -> str:
         ],
         "stream": False,
     }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-    r.raise_for_status()
-    return r.json()["message"]["content"]
+    try:
+        r = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        r.raise_for_status()
+        return r.json()["message"]["content"]
+    except Exception as e:
+        return f"Error connecting to AI: {e}"
 
-def save_to_excel(user_query, ai_summary):
-    file_name = "BEACH_Escalations.xlsx"
+def _save_to_excel(project_name, user_query, ai_summary):
+    file_name = "Legal_Log.xlsx"
     new_data = {
         "Timestamp": [datetime.now().strftime("%Y-%m-%d %H:%M")],
+        "Project Name": [project_name],
         "User Query": [user_query],
         "Simplified Summary": [ai_summary]
     }
     df_new = pd.DataFrame(new_data)
 
     try:
-        # Append to existing file if it exists
-        df_old = pd.read_excel(file_name)
-        df_final = pd.concat([df_old, df_new], ignore_index=True)
-    except FileNotFoundError:
-        df_final = df_new
+        if os.path.exists(file_name):
+            df_old = pd.read_excel(file_name)
+            df_final = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            df_final = df_new
 
-    df_final.to_excel(file_name, index=False)
-    print(f"Successfully logged to {file_name}")
+        df_final.to_excel(file_name, index=False)
+        print(f"[SERVER LOG] Excel updated for {project_name}")
+    except PermissionError:
+        print(f"[SERVER ERROR] Could not save to {file_name} - File is open elsewhere.")
+    except Exception as e:
+        print(f"[SERVER ERROR] Excel save failed: {e}")
 
-# --- MAIN WORKFLOW ---
-user_input = input("Enter your message: ")
-full_response = get_ai_response(user_input)
+# --- THE WEB ROUTER ENTRY POINT ---
+def respond(message: str) -> str:
+    full_response = _get_ai_response(message)
 
-# Split the AI's response into the "User Message" and the "Internal Summary"
-if "SUMMARY:" in full_response:
-    user_message, summary = full_response.split("SUMMARY:")
-else:
-    user_message, summary = full_response, "No summary provided."
+    # 1. Use Regex to extract the data tags from the AI's response
+    project_match = re.search(r'PROJECT NAME:\s*(.*)', full_response, re.IGNORECASE)
+    summary_match = re.search(r'SUMMARY:\s*(.*)', full_response, re.IGNORECASE)
 
-print(f"\nASSISTANT:\n{user_message.strip()}")
+    project_name = project_match.group(1).strip() if project_match else "NONE"
+    summary = summary_match.group(1).strip() if summary_match else "No summary provided."
 
-# ASK FOR PERMISSION
-share_choice = input("\nWould you like to share this concern with BEACH higher-ups for further review? (yes/no): ").lower()
+    # 2. Clean the tags out of the message so the user on the website doesn't see them
+    user_message = re.sub(r'PROJECT NAME:.*', '', full_response, flags=re.IGNORECASE)
+    user_message = re.sub(r'SUMMARY:.*', '', user_message, flags=re.IGNORECASE).strip()
 
-if share_choice == 'yes':
-    save_to_excel(user_input, summary.strip())
-    print("Your concern has been escalated.")
-else:
-    print("Understood. This session will not be shared.")
+    # 3. Logic: Only save if the AI found a project name
+    if project_name.upper() == "NONE" or not project_name:
+        # If no name, add a gentle prompt to the end of the web response
+        user_message += "\n\nCould you please let me know the name of your project? I'd like to log these strategy questions so a BEACH coordinator can review them with you."
+    else:
+        # If the name exists, execute the save silently on the server
+        _save_to_excel(project_name, message, summary)
+
+    # 4. Return strictly the text for the website frontend to display
+    return user_message
