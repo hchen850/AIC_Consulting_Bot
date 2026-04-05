@@ -1,19 +1,21 @@
-from pydantic import BaseModel, Field
 import requests
-from typing import List, Literal, Optional
+import gspread
+from google.oauth2.service_account import Credentials
 import re
 import json
+from datetime import datetime
+from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "mistral"
 
-
 class ClassifyResponse(BaseModel):
     category: Literal["legal", "business", "other"]
+    project_name: str = "Unknown"  # Added to capture project identity
     confidence: float = Field(..., ge=0.0, le=1.0)
     flags: List[str] = []
     rationale: str = ""
-
 
 LEGAL_PATTERNS = [
     (r"\btrademark\b|\btm\b|\b®\b|\bbrand name\b", "trademark"),
@@ -36,7 +38,6 @@ BUSINESS_HINTS = [
     (r"\boperations\b|\bprocess\b|\bhiring\b|\bteam\b", "operations"),
 ]
 
-
 def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     t = text.lower()
 
@@ -49,6 +50,7 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     if legal_hits:
         return ClassifyResponse(
             category="legal",
+            project_name="Unknown", # Fast-path rule doesn't extract names
             confidence=0.95,
             flags=sorted(list(set(legal_hits))),
             rationale="Detected legal-related topic keywords."
@@ -63,13 +65,13 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     if business_hits:
         return ClassifyResponse(
             category="business",
+            project_name="Unknown",
             confidence=0.75,
             flags=sorted(list(set(business_hits))),
             rationale="Detected business-related topic keywords."
         )
 
     # 3) other (Ciocca Center informational/website) last
-    # Logic: must mention ciocca AND show some informational/website intent
     mentions_ciocca = re.search(r"\bciocca\b|\bciocca center\b", t) is not None
     info_or_website_intent = re.search(
         r"\bwhat is\b|\bwhat does\b|\bwhat can\b|\bservices?\b|\bhelp with\b|\boffer(s|ed)?\b|\babout\b|\bwebsite\b|\bsite\b|\bpage\b|\blink\b|\bwhere can i find\b|\bcontact\b",
@@ -79,6 +81,7 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     if mentions_ciocca and info_or_website_intent:
         return ClassifyResponse(
             category="other",
+            project_name="Unknown",
             confidence=0.85,
             flags=["ciocca_center"],
             rationale="Detected Ciocca Center informational inquiry."
@@ -86,22 +89,19 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
 
     return None
 
-
 CLASSIFIER_SYSTEM_PROMPT = """You are a strict classifier for a university consulting chatbot.
 
-Classify the user's message into exactly one category:
-- "legal": trademarks/IP, contracts, incorporation/entity formation, employment law, compliance/regulatory, liability, taxes
-- "business": product, customers, marketing, pricing, operations, strategy, fundraising (non-legal framing)
-- "other": informational questions about the Ciocca Center or its website (what it is, what it offers, how it works)
+Analyze the user's message and extract two things:
+1. CATEGORY: "legal" (IP, contracts), "business" (MVP, marketing, pricing), or "other" (Ciocca Center info).
+2. PROJECT NAME: Extract the startup name if mentioned. If not found, write "Unknown".
 
 Rules:
 - If you are unsure, choose "legal".
 - Do not provide advice.
 - Output JSON only, exactly matching this schema:
-{"category":"legal"|"business"|"other","confidence":0.0-1.0,"flags":["..."],"rationale":"..."}
+{"category":"legal"|"business"|"other", "project_name":"...", "confidence":0.0-1.0, "flags":["..."], "rationale":"..."}
 - rationale must be one short sentence, no more than 12 words.
 """
-
 
 def llm_classify(text: str) -> ClassifyResponse:
     payload = {
@@ -113,53 +113,58 @@ def llm_classify(text: str) -> ClassifyResponse:
         "stream": False
     }
 
-    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-    r.raise_for_status()
-    data = r.json()
-    content = data["message"]["content"].strip()
-
     try:
-        obj = json.loads(content)
-    except json.JSONDecodeError:
+        r = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        r.raise_for_status()
+        obj = r.json()["message"]["content"].strip()
+        parsed = json.loads(obj)
+        
         return ClassifyResponse(
-            category="legal",
-            confidence=0.6,
-            flags=["parse_error"],
-            rationale="Unclear classification; defaulting to legal."
+            category=parsed.get("category", "legal"),
+            project_name=parsed.get("project_name", "Unknown"),
+            confidence=parsed.get("confidence", 0.6),
+            flags=parsed.get("flags", []),
+            rationale=parsed.get("rationale", "AI classification")
         )
-
-    cat = obj.get("category", "legal")
-    conf = obj.get("confidence", 0.6)
-    flags = obj.get("flags", [])
-    rationale = obj.get("rationale", "")
-
-    if cat not in ("legal", "business", "other"):
-        cat = "legal"
-
-    try:
-        conf = float(conf)
     except Exception:
-        conf = 0.6
-    conf = max(0.0, min(1.0, conf))
+        # Fallback if AI fails or JSON is malformed
+        return ClassifyResponse(category="legal", project_name="Unknown", confidence=0.5, rationale="Error parsing AI response.")
 
-    if not isinstance(flags, list):
-        flags = []
-    if not isinstance(rationale, str):
-        rationale = ""
+def _log_interaction_globally(data: ClassifyResponse, raw_text: str):
+    """Logs EVERY prompt to a single shared Google Sheet for BEACH employees."""
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        # Ensure credentials.json is in your project folder
+        creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
+        client = gspread.authorize(creds)
+        
+        # Open your master log sheet
+        sheet = client.open("BEACH_Global_Activity_Log").sheet1
+        
+        row = [
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            data.project_name,
+            data.category,
+            raw_text, # The actual question
+            data.rationale,
+            f"{int(data.confidence * 100)}%"
+        ]
+        
+        sheet.append_row(row)
+    except Exception as e:
+        print(f"[INTERNAL LOG ERROR] Failed to update global sheet: {e}")
 
-    if conf < 0.55:
-        cat = "legal"
-        flags = list(set(flags + ["low_confidence"]))
-        rationale = "Low confidence; defaulting to legal."
-
-    return ClassifyResponse(category=cat, confidence=conf, flags=flags, rationale=rationale)
-
-
+# --- THE MAIN ENTRY POINT FOR YOUR ROUTER ---
 def classify_text(text: str) -> dict:
     """
     Returns a plain dict suitable for routing.
-    Example:
-    {"category":"business","confidence":0.75,"flags":[...],"rationale":"..."}
+    Example: {"category":"business", "project_name":"DataSync", "confidence":0.75, "flags":[...], "rationale":"..."}
     """
+    # 1. Prioritize Rule-based for speed, fallback to LLM for complex queries
     classification = rule_based_classify(text) or llm_classify(text)
+    
+    # 2. TRIGGER GLOBAL LOG (Saves to Google Sheets instantly)
+    _log_interaction_globally(classification, text)
+    
+    # 3. Return exact dictionary format for your router
     return classification.model_dump()
