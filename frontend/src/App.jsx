@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-async function sendToBackend(message) {
+// 1. 👈 NEW: Added sessionId as a parameter
+async function sendToBackend(sessionId, message) {
   const res = await fetch(`${API_BASE}/bot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    // 2. 👈 NEW: Added session_id to the payload sent to FastAPI
+    body: JSON.stringify({ session_id: sessionId, message }),
   });
 
   if (!res.ok) {
@@ -34,13 +36,13 @@ function Badge({ label }) {
     return `${base};background:#f8fafc;color:#334155;border-color:#e2e8f0`;
   }, [label]);
 
-  // NOTE: style={{ cssText: ... }} doesn't work in React.
-  // We'll just render the label and rely on minimal styling.
-  // If you want the exact same look, I can convert this to a real style object.
   return <span style={{ padding: "2px 10px", borderRadius: 999, border: "1px solid #ddd", fontSize: 12 }}>{label}</span>;
 }
 
 export default function App() {
+  // 3. 👈 NEW: Generate a unique session ID once when the app loads
+  const [sessionId] = useState(() => crypto.randomUUID());
+
   const [messages, setMessages] = useState([
     {
       role: "bot",
@@ -71,7 +73,8 @@ export default function App() {
     });
 
     try {
-      const data = await sendToBackend(text);
+      // 4. NEW: Pass the sessionId to the backend function
+      const data = await sendToBackend(sessionId, text);
 
       // remove typing bubble
       setMessages((prev) => prev.filter((m) => m.id !== typingId));
@@ -80,9 +83,8 @@ export default function App() {
         role: "bot",
         text: data.reply,
         meta: {
-          category: data.classification?.category ?? "unknown",
-          confidence: data.classification?.confidence ?? 0,
-          // backend currently doesn't return followups, so this will just be []
+          category: data.classification?.category ?? "intake", // Defaulting to intake for the form flow
+          confidence: data.classification?.confidence ?? 1,
           followups: data.classification?.followups ?? [],
         },
       });
@@ -107,7 +109,7 @@ export default function App() {
           <div style={{ padding: 16, borderBottom: "1px solid #e5e7eb" }}>
             <div style={{ fontWeight: 700, fontSize: 18 }}>BEACH Intake Chat</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>
-              Backend routing: business • legal • other
+              Backend routing: intake • business • legal • other
             </div>
           </div>
 
@@ -186,7 +188,7 @@ export default function App() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question…"
+              placeholder="Type your answer…"
               style={{
                 flex: 1,
                 padding: 10,

@@ -1,14 +1,22 @@
-from langchain_mistralai import ChatMistralAI
-from langchain_core.messages import HumanMessage
+import requests
 
-print("Hello world")
-llm = ChatMistralAI(
-    model="mistral-large-latest",
-    temperature=0,
-)
+OLLAMA_URL = "http://localhost:11434/api/chat"
 
-response = llm.invoke([
-    HumanMessage(content="Reply with exactly: Mistral connected")
-])
+print("🚀 Testing connection to local Ollama...")
 
-print(response.content)
+payload = {
+    "model": "mistral",
+    "messages": [
+        {"role": "user", "content": "Reply with exactly: Mistral connected"}
+    ],
+    "stream": False
+}
+
+try:
+    response = requests.post(OLLAMA_URL, json=payload)
+    response.raise_for_status()
+    print("✅", response.json()["message"]["content"])
+except requests.exceptions.ConnectionError:
+    print("❌ ERROR: Could not connect. Is the Ollama app running on your computer?")
+except Exception as e:
+    print(f"❌ ERROR: {e}")

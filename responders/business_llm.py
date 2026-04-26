@@ -20,8 +20,7 @@ Rules:
 
 Output format:
 1) A short helpful sentence acknowledging the topic.
-2) 3–5 bullet follow-up questions.
-3) A short section titled "Summary for BEACH Consultants:" with 3–6 bullets.
+2) Follow-up questions to clarify the situation and identify priorities.
 """
 
 def respond(message: str) -> str:
