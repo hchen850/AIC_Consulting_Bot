@@ -44,11 +44,16 @@ export default function App() {
   const [messages, setMessages] = useState([
     {
       role: "bot",
-      text: "Hi! I’m the BEACH consulting bot. Tell me what you’re working on and what you need help with.",
+      text: "Hi! I’m the BEACH consulting bot. I'll be helping you today with the intake form.",
       meta: { category: "intake", confidence: 0.8 },
     },
   ]);
   const [input, setInput] = useState("");
+
+  const TOTAL_QUESTIONS = 5;
+  const userQuestionCount = messages.filter((m) => m.role === "user").length;
+  const questionsLeft = Math.max(TOTAL_QUESTIONS - userQuestionCount, 0);
+  const progress = Math.min((userQuestionCount / TOTAL_QUESTIONS) * 100, 100);
 
   function addMessage(m) {
     setMessages((prev) => [...prev, m]);
@@ -101,17 +106,39 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: "32px auto", fontFamily: "Arial, sans-serif" }}>
+    <div style={{minHeight: "100vh", width: "100vw", fontFamily: "Arial, sans-serif", background: "#f8fafc",
+                padding: 24, boxSizing: "border-box",}}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, background: "white", border: "1px solid #e5e7eb", borderRadius: 16 }}>
+        <div style={{flex: 1, height: "calc(100vh - 48px)", background: "white",
+                    border: "1px solid #e5e7eb", borderRadius: 16, display: "flex",
+                    flexDirection: "column",}}>
           <div style={{ padding: 16, borderBottom: "1px solid #e5e7eb" }}>
             <div style={{ fontWeight: 700, fontSize: 18 }}>BEACH Intake Chat</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>
               Backend routing: business • legal • other
             </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12,
+                            color: "#64748b", marginBottom: 6 }}>
+                <span>Progress</span>
+                <span>{questionsLeft} questions left</span>
+              </div>
+
+              <div style={{ width: "100%", height: 10, background: "#e5e7eb", borderRadius: 999 }}>
+                <div
+                  style={{
+                    width: `${progress}%`,
+                    height: "100%",
+                    background: "#111827",
+                    borderRadius: 999,
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
-          <div style={{ padding: 16, height: 420, overflowY: "auto" }}>
+          <div style={{ padding: 16, flex: 1, overflowY: "auto" }}>
             {messages.map((m, i) => {
               const isUser = m.role === "user";
               return (
