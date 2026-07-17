@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from intake_bot import process_intake_message
+from classifier import classify_text
 
 app = FastAPI()
 
@@ -20,12 +21,17 @@ class ChatRequest(BaseModel):
 @app.post("/bot")
 def bot(req: ChatRequest):
     try:
-        # Pass the message to the intake loop
-        reply = process_intake_message(req.session_id, req.message) 
-        return {"reply": reply}
-        
+        reply = process_intake_message(req.session_id, req.message)
+        classification = classify_text(req.message)
+        return {
+            "reply": reply,
+            "classification": {
+                "category": classification.category,
+                "confidence": classification.confidence,
+                "rationale": classification.rationale,
+            },
+        }
+
     except Exception as e:
-        # THIS IS THE MAGIC DETECTIVE! 
-        # If your code crashes, it will print exactly why right here.
         print(f"\n🚨 MASSIVE SERVER CRASH: {str(e)} 🚨\n")
         raise HTTPException(status_code=500, detail=str(e))

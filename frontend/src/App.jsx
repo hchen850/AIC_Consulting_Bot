@@ -2,12 +2,10 @@ import { useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-// 1. 👈 NEW: Added sessionId as a parameter
 async function sendToBackend(sessionId, message) {
   const res = await fetch(`${API_BASE}/bot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // 2. 👈 NEW: Added session_id to the payload sent to FastAPI
     body: JSON.stringify({ session_id: sessionId, message }),
   });
 
@@ -36,21 +34,26 @@ function Badge({ label }) {
     return `${base};background:#f8fafc;color:#334155;border-color:#e2e8f0`;
   }, [label]);
 
+  // NOTE: style={{ cssText: ... }} doesn't work in React.
+  // We'll just render the label and rely on minimal styling.
+  // If you want the exact same look, I can convert this to a real style object.
   return <span style={{ padding: "2px 10px", borderRadius: 999, border: "1px solid #ddd", fontSize: 12 }}>{label}</span>;
 }
 
 export default function App() {
-  // 3. 👈 NEW: Generate a unique session ID once when the app loads
-  const [sessionId] = useState(() => crypto.randomUUID());
-
   const [messages, setMessages] = useState([
     {
       role: "bot",
-      text: "Hi! I’m the BEACH consulting bot. Tell me what you’re working on and what you need help with.",
+      text: "Hi! I’m the BEACH consulting bot. I'll be helping you today with the intake form.",
       meta: { category: "intake", confidence: 0.8 },
     },
   ]);
   const [input, setInput] = useState("");
+
+  const TOTAL_QUESTIONS = 3;
+  const userQuestionCount = messages.filter((m) => m.role === "user").length;
+  const questionsLeft = Math.max(TOTAL_QUESTIONS - userQuestionCount, 0);
+  const progress = Math.min((userQuestionCount / TOTAL_QUESTIONS) * 100, 100);
 
   function addMessage(m) {
     setMessages((prev) => [...prev, m]);
@@ -73,8 +76,7 @@ export default function App() {
     });
 
     try {
-      // 4. NEW: Pass the sessionId to the backend function
-      const data = await sendToBackend(sessionId, text);
+      const data = await sendToBackend("frontend-session", text);
 
       // remove typing bubble
       setMessages((prev) => prev.filter((m) => m.id !== typingId));
@@ -83,8 +85,9 @@ export default function App() {
         role: "bot",
         text: data.reply,
         meta: {
-          category: data.classification?.category ?? "intake", // Defaulting to intake for the form flow
-          confidence: data.classification?.confidence ?? 1,
+          category: data.classification?.category ?? "unknown",
+          confidence: data.classification?.confidence ?? 0,
+          // backend currently doesn't return followups, so this will just be []
           followups: data.classification?.followups ?? [],
         },
       });
@@ -103,17 +106,39 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: "32px auto", fontFamily: "Arial, sans-serif" }}>
+    <div style={{minHeight: "100vh", width: "100vw", fontFamily: "Arial, sans-serif", background: "#f8fafc",
+                padding: 24, boxSizing: "border-box",}}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, background: "white", border: "1px solid #e5e7eb", borderRadius: 16 }}>
+        <div style={{flex: 1, height: "calc(100vh - 48px)", background: "white",
+                    border: "1px solid #e5e7eb", borderRadius: 16, display: "flex",
+                    flexDirection: "column",}}>
           <div style={{ padding: 16, borderBottom: "1px solid #e5e7eb" }}>
             <div style={{ fontWeight: 700, fontSize: 18 }}>BEACH Intake Chat</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>
-              Backend routing: intake • business • legal • other
+              Backend routing: business • legal • other
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12,
+                            color: "#64748b", marginBottom: 6 }}>
+                <span>Progress</span>
+                <span>{questionsLeft} questions left</span>
+              </div>
+
+              <div style={{ width: "100%", height: 10, background: "#e5e7eb", borderRadius: 999 }}>
+                <div
+                  style={{
+                    width: `${progress}%`,
+                    height: "100%",
+                    background: "#111827",
+                    borderRadius: 999,
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
             </div>
           </div>
 
-          <div style={{ padding: 16, height: 420, overflowY: "auto" }}>
+          <div style={{ padding: 16, flex: 1, overflowY: "auto" }}>
             {messages.map((m, i) => {
               const isUser = m.role === "user";
               return (
@@ -188,7 +213,7 @@ export default function App() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your answer…"
+              placeholder="Type your question…"
               style={{
                 flex: 1,
                 padding: 10,
