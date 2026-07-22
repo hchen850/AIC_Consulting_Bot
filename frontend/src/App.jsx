@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-async function sendToBackend(message) {
+async function sendToBackend(message, history, collected, category, stage) {
   const res = await fetch(`${API_BASE}/bot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history, collected, category, stage }),
   });
 
   if (!res.ok) {
@@ -34,9 +34,6 @@ function Badge({ label }) {
     return `${base};background:#f8fafc;color:#334155;border-color:#e2e8f0`;
   }, [label]);
 
-  // NOTE: style={{ cssText: ... }} doesn't work in React.
-  // We'll just render the label and rely on minimal styling.
-  // If you want the exact same look, I can convert this to a real style object.
   return <span style={{ padding: "2px 10px", borderRadius: 999, border: "1px solid #ddd", fontSize: 12 }}>{label}</span>;
 }
 
@@ -44,16 +41,16 @@ export default function App() {
   const [messages, setMessages] = useState([
     {
       role: "bot",
-      text: "Hi! I’m the BEACH consulting bot. I'll be helping you today with the intake form.",
+      text: "Hi! I'm the BEACH consulting bot and I'll be assisting you today. What do you need help with?",
       meta: { category: "intake", confidence: 0.8 },
     },
   ]);
   const [input, setInput] = useState("");
-
-  const TOTAL_QUESTIONS = 5;
-  const userQuestionCount = messages.filter((m) => m.role === "user").length;
-  const questionsLeft = Math.max(TOTAL_QUESTIONS - userQuestionCount, 0);
-  const progress = Math.min((userQuestionCount / TOTAL_QUESTIONS) * 100, 100);
+  const [collected, setCollected] = useState({});
+  const [history, setHistory] = useState([]);
+  const [category, setCategory] = useState(null);
+  const [stage, setStage] = useState("problem");
+  const [progress, setProgress] = useState({ answered: 0, total: 0, remaining: 0, done: false, tracked: false });
 
   function addMessage(m) {
     setMessages((prev) => [...prev, m]);
@@ -76,10 +73,15 @@ export default function App() {
     });
 
     try {
-      const data = await sendToBackend(text);
+      const data = await sendToBackend(text, history, collected, category, stage);
 
-      // remove typing bubble
       setMessages((prev) => prev.filter((m) => m.id !== typingId));
+
+      setHistory(data.history ?? history);
+      setCollected(data.collected ?? {});
+      setCategory(data.category ?? category);
+      setProgress(data.progress ?? progress);
+      setStage(data.stage ?? stage);
 
       addMessage({
         role: "bot",
@@ -87,7 +89,6 @@ export default function App() {
         meta: {
           category: data.classification?.category ?? "unknown",
           confidence: data.classification?.confidence ?? 0,
-          // backend currently doesn't return followups, so this will just be []
           followups: data.classification?.followups ?? [],
         },
       });
@@ -117,25 +118,42 @@ export default function App() {
             <div style={{ fontSize: 12, color: "#64748b" }}>
               Backend routing: business • legal • other
             </div>
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12,
-                            color: "#64748b", marginBottom: 6 }}>
-                <span>Progress</span>
-                <span>{questionsLeft} questions left</span>
-              </div>
 
-              <div style={{ width: "100%", height: 10, background: "#e5e7eb", borderRadius: 999 }}>
-                <div
-                  style={{
-                    width: `${progress}%`,
-                    height: "100%",
-                    background: "#111827",
-                    borderRadius: 999,
-                    transition: "width 0.3s ease",
-                  }}
-                />
+            {progress.tracked && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12,
+                              color: "#64748b", marginBottom: 6 }}>
+                  <span>Progress</span>
+                  <span>
+                    {progress.done
+                      ? (category === "business" ? "Ready to copy into HubSpot" : "0 questions left")
+                      : `${progress.remaining} question${progress.remaining === 1 ? "" : "s"} left`}
+                  </span>
+                </div>
+
+                <div style={{ width: "100%", height: 10, background: "#e5e7eb", borderRadius: 999 }}>
+                  <div
+                    style={{
+                      width: `${progress.total ? Math.min(100, (progress.answered / progress.total) * 100) : 0}%`,
+                      height: "100%",
+                      background: progress.done ? "#059669" : "#111827",
+                      borderRadius: 999,
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {progress.tracked && progress.done && category === "business" && (
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(messages[messages.length - 1]?.text ?? "")}
+                style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, border: "1px solid #059669", color: "#059669", background: "white", cursor: "pointer", fontSize: 13 }}
+              >
+                Copy summary
+              </button>
+            )}
           </div>
 
           <div style={{ padding: 16, flex: 1, overflowY: "auto" }}>
@@ -161,6 +179,7 @@ export default function App() {
                         color: isUser ? "white" : "#0f172a",
                         lineHeight: 1.4,
                         fontSize: 14,
+                        whiteSpace: "pre-wrap",
                       }}
                     >
                       {m.text}
