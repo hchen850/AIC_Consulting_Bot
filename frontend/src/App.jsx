@@ -34,9 +34,6 @@ function Badge({ label }) {
     return `${base};background:#f8fafc;color:#334155;border-color:#e2e8f0`;
   }, [label]);
 
-  // NOTE: style={{ cssText: ... }} doesn't work in React.
-  // We'll just render the label and rely on minimal styling.
-  // If you want the exact same look, I can convert this to a real style object.
   return <span style={{ padding: "2px 10px", borderRadius: 999, border: "1px solid #ddd", fontSize: 12 }}>{label}</span>;
 }
 
@@ -78,7 +75,6 @@ export default function App() {
     try {
       const data = await sendToBackend(text, history, collected, category, stage);
 
-      // remove typing bubble
       setMessages((prev) => prev.filter((m) => m.id !== typingId));
 
       setHistory(data.history ?? history);
@@ -93,7 +89,6 @@ export default function App() {
         meta: {
           category: data.classification?.category ?? "unknown",
           confidence: data.classification?.confidence ?? 0,
-          // backend currently doesn't return followups, so this will just be []
           followups: data.classification?.followups ?? [],
         },
       });
