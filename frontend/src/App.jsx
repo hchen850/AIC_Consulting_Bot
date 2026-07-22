@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-async function sendToBackend(message) {
+async function sendToBackend(message, history, collected, category, stage) {
   const res = await fetch(`${API_BASE}/bot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history, collected, category, stage }),
   });
 
   if (!res.ok) {
@@ -44,11 +44,16 @@ export default function App() {
   const [messages, setMessages] = useState([
     {
       role: "bot",
-      text: "Hi! I’m the BEACH consulting bot. Tell me what you’re working on and what you need help with.",
+      text: "Hi! I'm the BEACH consulting bot and I'll be assisting you today. What do you need help with?",
       meta: { category: "intake", confidence: 0.8 },
     },
   ]);
   const [input, setInput] = useState("");
+  const [collected, setCollected] = useState({});
+  const [history, setHistory] = useState([]);
+  const [category, setCategory] = useState(null);
+  const [stage, setStage] = useState("problem");
+  const [progress, setProgress] = useState({ answered: 0, total: 0, remaining: 0, done: false, tracked: false });
 
   function addMessage(m) {
     setMessages((prev) => [...prev, m]);
@@ -71,10 +76,16 @@ export default function App() {
     });
 
     try {
-      const data = await sendToBackend(text);
+      const data = await sendToBackend(text, history, collected, category, stage);
 
       // remove typing bubble
       setMessages((prev) => prev.filter((m) => m.id !== typingId));
+
+      setHistory(data.history ?? history);
+      setCollected(data.collected ?? {});
+      setCategory(data.category ?? category);
+      setProgress(data.progress ?? progress);
+      setStage(data.stage ?? stage);
 
       addMessage({
         role: "bot",
@@ -101,17 +112,56 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: "32px auto", fontFamily: "Arial, sans-serif" }}>
+    <div style={{minHeight: "100vh", width: "100vw", fontFamily: "Arial, sans-serif", background: "#f8fafc",
+                padding: 24, boxSizing: "border-box",}}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, background: "white", border: "1px solid #e5e7eb", borderRadius: 16 }}>
+        <div style={{flex: 1, height: "calc(100vh - 48px)", background: "white",
+                    border: "1px solid #e5e7eb", borderRadius: 16, display: "flex",
+                    flexDirection: "column",}}>
           <div style={{ padding: 16, borderBottom: "1px solid #e5e7eb" }}>
             <div style={{ fontWeight: 700, fontSize: 18 }}>BEACH Intake Chat</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>
               Backend routing: business • legal • other
             </div>
+
+            {progress.tracked && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12,
+                              color: "#64748b", marginBottom: 6 }}>
+                  <span>Progress</span>
+                  <span>
+                    {progress.done
+                      ? (category === "business" ? "Ready to copy into HubSpot" : "0 questions left")
+                      : `${progress.remaining} question${progress.remaining === 1 ? "" : "s"} left`}
+                  </span>
+                </div>
+
+                <div style={{ width: "100%", height: 10, background: "#e5e7eb", borderRadius: 999 }}>
+                  <div
+                    style={{
+                      width: `${progress.total ? Math.min(100, (progress.answered / progress.total) * 100) : 0}%`,
+                      height: "100%",
+                      background: progress.done ? "#059669" : "#111827",
+                      borderRadius: 999,
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {progress.tracked && progress.done && category === "business" && (
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(messages[messages.length - 1]?.text ?? "")}
+                style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, border: "1px solid #059669", color: "#059669", background: "white", cursor: "pointer", fontSize: 13 }}
+              >
+                Copy summary
+              </button>
+            )}
           </div>
 
-          <div style={{ padding: 16, height: 420, overflowY: "auto" }}>
+          <div style={{ padding: 16, flex: 1, overflowY: "auto" }}>
             {messages.map((m, i) => {
               const isUser = m.role === "user";
               return (
@@ -134,6 +184,7 @@ export default function App() {
                         color: isUser ? "white" : "#0f172a",
                         lineHeight: 1.4,
                         fontSize: 14,
+                        whiteSpace: "pre-wrap",
                       }}
                     >
                       {m.text}
