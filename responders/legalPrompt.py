@@ -1,7 +1,9 @@
-import requests
+import os
+from openai import OpenAI
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "mistral"
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+MODEL_NAME = "deepseek-chat"
 
 LEGAL_REFUSAL_PROMPT = """You are the BEACH Startup Strategy Assistant.
 The user asked a legal question, but you cannot provide legal advice. Instead, you will
@@ -27,27 +29,24 @@ only include the actual content.
 """
 
 def _get_ai_response(message: str) -> str:
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": LEGAL_REFUSAL_PROMPT},
-            {"role": "user", "content": message},
-        ],
-        "stream": False,
-    }
     try:
-        r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-        r.raise_for_status()
-        return r.json()["message"]["content"]
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": LEGAL_REFUSAL_PROMPT},
+                {"role": "user", "content": message},
+            ],
+            stream=False,
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error connecting to AI: {e}"
 
 # --- THE WEB ROUTER ENTRY POINT ---
 def respond(message: str) -> str:
     """
-    Takes the classified legal message, generates the strategic business pivot, 
+    Takes the classified legal message, generates the strategic business pivot,
     and returns the clean text for the website frontend.
     (Data logging is now handled upstream by the global classifier).
     """
-    full_response = _get_ai_response(message)
-    return full_response
+    return _get_ai_response(message)

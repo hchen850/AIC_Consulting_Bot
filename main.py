@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Dict, Optional
@@ -11,7 +14,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://YOUR-FRONTEND-NAME.onrender.com",  # add this once you know the real URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

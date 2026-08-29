@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import requests
 import json
 import re
+import os
+from openai import OpenAI
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "mistral"
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+MODEL_NAME = "deepseek-chat"  # DeepSeek's general-purpose model; adjust if you have a specific one in mind
 
 
 def build_system_prompt(persona_intro: str, fields: list[str], collected: dict) -> str:
@@ -39,15 +41,12 @@ def call_llm(system_prompt: str, history: list[dict], message: str) -> str:
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
-    payload = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "stream": False,
-        "format": "json",
-    }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-    r.raise_for_status()
-    return r.json()["message"]["content"]
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=messages,
+        stream=False,
+    )
+    return response.choices[0].message.content
 
 
 def parse_llm_json(raw: str) -> dict:

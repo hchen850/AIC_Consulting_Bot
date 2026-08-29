@@ -2,6 +2,18 @@ import { useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
+const GATE_QUESTION = "Do you have any inquiries related to:\n- Taxes\n- Rental/Property Issues/Evictions\n- Litigations";
+const GATE_REDIRECT_MESSAGE = "We do not address these areas, but we can help you with the topics below.";
+
+const TOPIC_OPTIONS = [
+  "Legal Structure & Business Formation",
+  "Business Strategy & Growth Plan",
+  "Licensing and Regulatory Compliance",
+  "Marketing & Positioning",
+  "Intellectual Property & IP Protection",
+  "Funding, Investment, & Equity",
+];
+
 async function sendToBackend(message, history, collected, category, stage) {
   const res = await fetch(`${API_BASE}/bot`, {
     method: "POST",
@@ -41,7 +53,7 @@ export default function App() {
   const [messages, setMessages] = useState([
     {
       role: "bot",
-      text: "Hi! I'm the BEACH consulting bot and I'll be assisting you today. What do you need help with?",
+      text: GATE_QUESTION,
       meta: { category: "intake", confidence: 0.8 },
     },
   ]);
@@ -52,17 +64,44 @@ export default function App() {
   const [stage, setStage] = useState("problem");
   const [progress, setProgress] = useState({ answered: 0, total: 0, remaining: 0, done: false, tracked: false });
 
+  // New: controls which UI is shown — gate question, topic dropdown, or the normal chat box
+  const [uiStage, setUiStage] = useState("gate"); // "gate" -> "dropdown" -> "chat"
+  const [selectedTopics, setSelectedTopics] = useState([]);
+  const [otherChecked, setOtherChecked] = useState(false);
+  const [otherText, setOtherText] = useState("");
+
   function addMessage(m) {
     setMessages((prev) => [...prev, m]);
   }
 
-  async function sendMessage(e) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text) return;
+  function toggleTopic(topic) {
+    setSelectedTopics((prev) =>
+      prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
+    );
+  }
 
+  function handleGateAnswer(answer) {
+    addMessage({ role: "user", text: answer });
+    if (answer === "Yes") {
+      addMessage({ role: "bot", text: GATE_REDIRECT_MESSAGE, meta: { category: "intake", confidence: 0.8 } });
+    }
+    setUiStage("dropdown");
+  }
+
+  async function submitTopics() {
+    const parts = [...selectedTopics];
+    if (otherChecked && otherText.trim()) {
+      parts.push(`Other: ${otherText.trim()}`);
+    }
+    if (parts.length === 0) return;
+
+    const combinedMessage = parts.join(", ");
+    setUiStage("chat");
+    await sendChatMessage(combinedMessage);
+  }
+
+  async function sendChatMessage(text) {
     addMessage({ role: "user", text });
-    setInput("");
 
     const typingId = crypto.randomUUID();
     addMessage({
@@ -102,6 +141,14 @@ export default function App() {
     }
   }
 
+  async function sendMessage(e) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    await sendChatMessage(text);
+  }
+
   function clickFollowup(q) {
     setInput(q);
   }
@@ -126,7 +173,7 @@ export default function App() {
                   <span>Progress</span>
                   <span>
                     {progress.done
-                      ? (category === "business" ? "Ready to copy into HubSpot" : "0 questions left")
+                      ? (progress.is_summary ? "Ready to copy into HubSpot" : "0 questions left")
                       : `${progress.remaining} question${progress.remaining === 1 ? "" : "s"} left`}
                   </span>
                 </div>
@@ -145,7 +192,7 @@ export default function App() {
               </div>
             )}
 
-            {progress.tracked && progress.done && category === "business" && (
+            {progress.tracked && progress.done && progress.is_summary && (
               <button
                 type="button"
                 onClick={() => navigator.clipboard.writeText(messages[messages.length - 1]?.text ?? "")}
@@ -226,35 +273,108 @@ export default function App() {
                 </div>
               );
             })}
+
+            {uiStage === "dropdown" && (
+              <div style={{ marginTop: 8, padding: 16, border: "1px solid #e5e7eb", borderRadius: 12, background: "#f8fafc" }}>
+                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>
+                  Please select all areas where you are seeking guidance:
+                </div>
+                {TOPIC_OPTIONS.map((topic) => (
+                  <label key={topic} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTopics.includes(topic)}
+                      onChange={() => toggleTopic(topic)}
+                    />
+                    {topic}
+                  </label>
+                ))}
+                <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={otherChecked}
+                    onChange={() => setOtherChecked((v) => !v)}
+                  />
+                  Other...
+                </label>
+                {otherChecked && (
+                  <input
+                    type="text"
+                    value={otherText}
+                    onChange={(e) => setOtherText(e.target.value)}
+                    placeholder="Tell us what you need help with"
+                    style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #e5e7eb", marginBottom: 10, boxSizing: "border-box" }}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={submitTopics}
+                  disabled={selectedTopics.length === 0 && !(otherChecked && otherText.trim())}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid #111827",
+                    background: "#111827",
+                    color: "white",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    opacity: selectedTopics.length === 0 && !(otherChecked && otherText.trim()) ? 0.5 : 1,
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            )}
           </div>
 
-          <form onSubmit={sendMessage} style={{ padding: 12, borderTop: "1px solid #e5e7eb", display: "flex", gap: 8 }}>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question…"
-              style={{
-                flex: 1,
-                padding: 10,
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                outline: "none",
-              }}
-            />
-            <button
-              type="submit"
-              style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "1px solid #111827",
-                background: "#111827",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              Send
-            </button>
-          </form>
+          {uiStage === "gate" && (
+            <div style={{ padding: 12, borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, justifyContent: "center" }}>
+              <button
+                type="button"
+                onClick={() => handleGateAnswer("Yes")}
+                style={{ padding: "10px 20px", borderRadius: 12, border: "1px solid #111827", background: "white", color: "#111827", cursor: "pointer" }}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGateAnswer("No")}
+                style={{ padding: "10px 20px", borderRadius: 12, border: "1px solid #111827", background: "#111827", color: "white", cursor: "pointer" }}
+              >
+                No
+              </button>
+            </div>
+          )}
+
+          {uiStage === "chat" && (
+            <form onSubmit={sendMessage} style={{ padding: 12, borderTop: "1px solid #e5e7eb", display: "flex", gap: 8 }}>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type your question…"
+                style={{
+                  flex: 1,
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  outline: "none",
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Send
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
