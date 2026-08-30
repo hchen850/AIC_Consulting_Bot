@@ -303,6 +303,7 @@ export default function App() {
                   </label>
                 ))}
                 <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer", color: "#0f172a" }}>
+                  <input
                     type="checkbox"
                     checked={otherChecked}
                     onChange={() => setOtherChecked((v) => !v)}
