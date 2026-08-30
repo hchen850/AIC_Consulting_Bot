@@ -1,14 +1,16 @@
-import requests
 import gspread
 from google.oauth2.service_account import Credentials
 import re
 import json
+import os
 from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
+from openai import OpenAI
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "mistral"
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+MODEL_NAME = "deepseek-chat"
 
 class ClassifyResponse(BaseModel):
     category: Literal["legal", "business", "other"]
@@ -41,7 +43,6 @@ BUSINESS_HINTS = [
 def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     t = text.lower()
 
-    # 1) legal first
     legal_hits = []
     for pat, flag in LEGAL_PATTERNS:
         if re.search(pat, t):
@@ -50,13 +51,12 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
     if legal_hits:
         return ClassifyResponse(
             category="legal",
-            project_name="Unknown", # Fast-path rule doesn't extract names
+            project_name="Unknown",
             confidence=0.95,
             flags=sorted(list(set(legal_hits))),
             rationale="Detected legal-related topic keywords."
         )
 
-    # 2) business next
     business_hits = []
     for pat, flag in BUSINESS_HINTS:
         if re.search(pat, t):
@@ -71,7 +71,6 @@ def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
             rationale="Detected business-related topic keywords."
         )
 
-    # 3) other (Ciocca Center informational/website) last
     mentions_ciocca = re.search(r"\bciocca\b|\bciocca center\b", t) is not None
     info_or_website_intent = re.search(
         r"\bwhat is\b|\bwhat does\b|\bwhat can\b|\bservices?\b|\bhelp with\b|\boffer(s|ed)?\b|\babout\b|\bwebsite\b|\bsite\b|\bpage\b|\blink\b|\bwhere can i find\b|\bcontact\b",
@@ -104,21 +103,18 @@ Rules:
 """
 
 def llm_classify(text: str) -> ClassifyResponse:
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT},
-            {"role": "user", "content": text},
-        ],
-        "stream": False
-    }
-
     try:
-        r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-        r.raise_for_status()
-        obj = r.json()["message"]["content"].strip()
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            stream=False,
+        )
+        obj = response.choices[0].message.content.strip()
         parsed = json.loads(obj)
-        
+
         return ClassifyResponse(
             category=parsed.get("category", "legal"),
             project_name=parsed.get("project_name", "Unknown"),
@@ -127,44 +123,34 @@ def llm_classify(text: str) -> ClassifyResponse:
             rationale=parsed.get("rationale", "AI classification")
         )
     except Exception:
-        # Fallback if AI fails or JSON is malformed
         return ClassifyResponse(category="legal", project_name="Unknown", confidence=0.5, rationale="Error parsing AI response.")
 
 def _log_interaction_globally(data: ClassifyResponse, raw_text: str):
     """Logs EVERY prompt to a single shared Google Sheet for BEACH employees."""
     try:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        # Ensure credentials.json is in your project folder
         creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
-        client = gspread.authorize(creds)
-        
-        # Open your master log sheet
-        sheet = client.open("BEACH_Global_Activity_Log").sheet1
-        
+        client_sheets = gspread.authorize(creds)
+
+        sheet = client_sheets.open("BEACH_Global_Activity_Log").sheet1
+
         row = [
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             data.project_name,
             data.category,
-            raw_text, # The actual question
+            raw_text,
             data.rationale,
             f"{int(data.confidence * 100)}%"
         ]
-        
+
         sheet.append_row(row)
     except Exception as e:
         print(f"[INTERNAL LOG ERROR] Failed to update global sheet: {e}")
 
-# --- THE MAIN ENTRY POINT FOR YOUR ROUTER ---
 def classify_text(text: str) -> dict:
     """
     Returns a plain dict suitable for routing.
-    Example: {"category":"business", "project_name":"DataSync", "confidence":0.75, "flags":[...], "rationale":"..."}
     """
-    # 1. Prioritize Rule-based for speed, fallback to LLM for complex queries
     classification = rule_based_classify(text) or llm_classify(text)
-    
-    # 2. TRIGGER GLOBAL LOG (Saves to Google Sheets instantly)
     _log_interaction_globally(classification, text)
-    
-    # 3. Return exact dictionary format for your router
     return classification.model_dump()

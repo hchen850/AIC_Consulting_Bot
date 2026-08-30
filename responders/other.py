@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import requests
+import os
+from openai import OpenAI
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "mistral"
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+MODEL_NAME = "deepseek-chat"
 
-# Used only on the very first message in a conversation
 OTHER_ASSISTANT_PROMPT_FULL = """You are the Ciocca Center Assistant at Santa Clara University.
 
 The user is asking informational questions about the Ciocca Center and/or its website.
@@ -23,7 +24,6 @@ Output format:
 3) Up to 3 clarifying questions.
 """
 
-# Used for every message after the first
 OTHER_ASSISTANT_PROMPT_SHORT = """You are the Ciocca Center Assistant at Santa Clara University.
 
 The user has already received the full overview of the Ciocca Center earlier in this
@@ -48,11 +48,9 @@ def respond(message: str, history: list[dict]) -> str:
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
-    payload = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "stream": False,
-    }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
-    r.raise_for_status()
-    return r.json()["message"]["content"]
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=messages,
+        stream=False,
+    )
+    return response.choices[0].message.content
