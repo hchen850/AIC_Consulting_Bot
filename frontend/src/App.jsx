@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://beach-consulting-backend.onrender.com";
 
 const GATE_QUESTION = "Do you have any inquiries related to:\n- Taxes\n- Rental/Property Issues/Evictions\n- Litigations";
 const GATE_REDIRECT_MESSAGE = "We do not address these areas, but we can help you with the topics below.";
