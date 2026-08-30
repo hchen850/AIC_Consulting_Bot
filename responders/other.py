@@ -17,6 +17,7 @@ Rules:
 - Do not give legal advice.
 - Keep it practical and oriented around how to use the center/website.
 - If the user asks something legal, remind them you can't provide legal advice.
+- Do not use markdown formatting (no **, #, or other symbols) — plain text only, using dashes for bullets.
 
 Output format:
 1) 2–4 sentences overview.
@@ -37,6 +38,7 @@ Rules:
 - Do not give legal advice.
 - Keep it practical and oriented around how to use the center/website.
 - If the user asks something legal, remind them you can't provide legal advice.
+- Do not use markdown formatting (no **, #, or other symbols) — plain text only.
 """
 
 

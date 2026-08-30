@@ -29,6 +29,8 @@ LEGAL_PATTERNS = [
     (r"\btax\b|\b1099\b|\bw-2\b|\bsales tax\b", "tax"),
     (r"\bliability\b|\bindemnif(y|ication)\b|\bhold harmless\b", "liability"),
     (r"\bemployment law\b|\bmisclassification\b|\bcontractor\b", "employment_law"),
+    (r"\beviction\b|\blandlord\b|\btenant\b|\brental agreement\b|\blease\b", "rental_property"),
+    (r"\blitigation\b|\blawsuit\b|\bsue\b|\bsuing\b|\bsued\b|\bcourt case\b", "litigation"),
 ]
 
 BUSINESS_HINTS = [
@@ -39,7 +41,45 @@ BUSINESS_HINTS = [
     (r"\boperations\b|\bprocess\b|\bhiring\b|\bteam\b", "operations"),
 ]
 
+# Exact dropdown option labels mapped to their correct category.
+# Checked before any other classification logic, so dropdown selections
+# are never left up to fuzzy keyword matching or the LLM.
+DROPDOWN_TOPIC_MAP = {
+    "legal structure & business formation": "legal",
+    "business strategy & growth plan": "business",
+    "licensing and regulatory compliance": "legal",
+    "marketing & positioning": "business",
+    "intellectual property & ip protection": "legal",
+    "funding, investment, & equity": "business",
+}
+
+
+def _dropdown_topic_classify(text: str) -> Optional[ClassifyResponse]:
+    t = text.lower()
+    matched_categories = set()
+    for phrase, cat in DROPDOWN_TOPIC_MAP.items():
+        if phrase in t:
+            matched_categories.add(cat)
+
+    if not matched_categories:
+        return None
+
+    # If both legal and business topics were selected together, legal wins —
+    # consistent with the existing "legal checked first" priority elsewhere.
+    category = "legal" if "legal" in matched_categories else "business"
+    return ClassifyResponse(
+        category=category,
+        project_name="Unknown",
+        confidence=0.95,
+        flags=["dropdown_selection"],
+        rationale="Matched a known dropdown topic label."
+    )
+
 def rule_based_classify(text: str) -> Optional[ClassifyResponse]:
+    dropdown_match = _dropdown_topic_classify(text)
+    if dropdown_match:
+        return dropdown_match
+
     t = text.lower()
 
     legal_hits = []
