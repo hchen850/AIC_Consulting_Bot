@@ -17,7 +17,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://YOUR-FRONTEND-NAME.onrender.com",  # add this once you know the real URL
+        "https://aic-consulting-bot.onrender.com",  # add this once you know the real URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
