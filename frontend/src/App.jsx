@@ -276,11 +276,11 @@ export default function App() {
 
             {uiStage === "dropdown" && (
               <div style={{ marginTop: 8, padding: 16, border: "1px solid #e5e7eb", borderRadius: 12, background: "#f8fafc" }}>
-                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>
+                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14, color: "#0f172a" }}>
                   Please select all areas where you are seeking guidance:
                 </div>
                 {TOPIC_OPTIONS.map((topic) => (
-                  <label key={topic} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer" }}>
+                  <label key={topic} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer", color: "#0f172a" }}>
                     <input
                       type="checkbox"
                       checked={selectedTopics.includes(topic)}
@@ -289,8 +289,7 @@ export default function App() {
                     {topic}
                   </label>
                 ))}
-                <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer" }}>
-                  <input
+                <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14, cursor: "pointer", color: "#0f172a" }}>
                     type="checkbox"
                     checked={otherChecked}
                     onChange={() => setOtherChecked((v) => !v)}
