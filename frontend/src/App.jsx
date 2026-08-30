@@ -14,11 +14,11 @@ const TOPIC_OPTIONS = [
   "Funding, Investment, & Equity",
 ];
 
-async function sendToBackend(message, history, collected, category, stage) {
+async function sendToBackend(message, history, collected, category, confidence, stage) {
   const res = await fetch(`${API_BASE}/bot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history, collected, category, stage }),
+    body: JSON.stringify({ message, history, collected, category, confidence, stage }),
   });
 
   if (!res.ok) {
@@ -30,23 +30,34 @@ async function sendToBackend(message, history, collected, category, stage) {
 }
 
 function Badge({ label }) {
-  const cls = useMemo(() => {
-    const base =
-      "display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid #ddd;font-size:12px";
+  const colors = useMemo(() => {
     if (label === "legal")
-      return `${base};background:#fff1f2;color:#9f1239;border-color:#fecdd3`;
+      return { background: "#fff1f2", color: "#9f1239", borderColor: "#fecdd3" };
     if (label === "business")
-      return `${base};background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe`;
+      return { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" };
     if (label === "other")
-      return `${base};background:#ecfdf5;color:#047857;border-color:#a7f3d0`;
+      return { background: "#ecfdf5", color: "#047857", borderColor: "#a7f3d0" };
     if (label === "loading")
-      return `${base};background:#f1f5f9;color:#334155;border-color:#e2e8f0`;
+      return { background: "#f1f5f9", color: "#334155", borderColor: "#e2e8f0" };
     if (label === "error")
-      return `${base};background:#fef2f2;color:#b91c1c;border-color:#fecaca`;
-    return `${base};background:#f8fafc;color:#334155;border-color:#e2e8f0`;
+      return { background: "#fef2f2", color: "#b91c1c", borderColor: "#fecaca" };
+    return { background: "#f8fafc", color: "#334155", borderColor: "#e2e8f0" };
   }, [label]);
 
-  return <span style={{ padding: "2px 10px", borderRadius: 999, border: "1px solid #ddd", fontSize: 12 }}>{label}</span>;
+  return (
+    <span
+      style={{
+        padding: "2px 10px",
+        borderRadius: 999,
+        border: `1px solid ${colors.borderColor}`,
+        background: colors.background,
+        color: colors.color,
+        fontSize: 12,
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 export default function App() {
@@ -61,6 +72,7 @@ export default function App() {
   const [collected, setCollected] = useState({});
   const [history, setHistory] = useState([]);
   const [category, setCategory] = useState(null);
+  const [confidence, setConfidence] = useState(null);
   const [stage, setStage] = useState("problem");
   const [progress, setProgress] = useState({ answered: 0, total: 0, remaining: 0, done: false, tracked: false });
 
@@ -112,13 +124,14 @@ export default function App() {
     });
 
     try {
-      const data = await sendToBackend(text, history, collected, category, stage);
+      const data = await sendToBackend(text, history, collected, category, confidence, stage);
 
       setMessages((prev) => prev.filter((m) => m.id !== typingId));
 
       setHistory(data.history ?? history);
       setCollected(data.collected ?? {});
       setCategory(data.category ?? category);
+      setConfidence(data.classification?.confidence ?? confidence);
       setProgress(data.progress ?? progress);
       setStage(data.stage ?? stage);
 

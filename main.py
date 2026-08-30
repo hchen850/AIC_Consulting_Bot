@@ -29,7 +29,8 @@ class ChatRequest(BaseModel):
     history: List[Dict] = []
     collected: Dict = {}
     category: Optional[str] = None
-    stage: str = "problem"  # "problem" (first message) -> "routed" (business follow-ups)
+    confidence: Optional[float] = None
+    stage: str = "problem"
 
 @app.get("/chat")
 def chat():
@@ -58,7 +59,7 @@ def bot(req: ChatRequest):
         }
 
     # Stage 2: ongoing business follow-up turns only
-    classification = {"category": req.category}
+    classification = {"category": req.category, "confidence": req.confidence}
     reply, updated_fields, progress, category = route(req.message, classification, req.history, req.collected)
     new_history.append({"role": "assistant", "content": reply})
 
