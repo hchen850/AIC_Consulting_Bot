@@ -1,5 +1,4 @@
-import gspread
-from google.oauth2.service_account import Credentials
+from sheets_client import get_sheets_client, sheets_logging_enabled
 import re
 import json
 import os
@@ -127,11 +126,10 @@ def llm_classify(text: str) -> ClassifyResponse:
 
 def _log_interaction_globally(data: ClassifyResponse, raw_text: str):
     """Logs EVERY prompt to a single shared Google Sheet for BEACH employees."""
+    if not sheets_logging_enabled():
+        return
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
-        client_sheets = gspread.authorize(creds)
-
+        client_sheets = get_sheets_client()
         sheet = client_sheets.open("BEACH_Global_Activity_Log").sheet1
 
         row = [
