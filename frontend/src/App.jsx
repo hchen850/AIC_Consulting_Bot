@@ -359,7 +359,13 @@ export default function App() {
             </div>
           )}
 
-          {uiStage === "chat" && (
+          {uiStage === "chat" && progress.tracked && progress.done && progress.is_summary && (
+            <div style={{ padding: 16, borderTop: "1px solid #e5e7eb", textAlign: "center", color: "#64748b", fontSize: 14 }}>
+              This conversation is complete. If you'd like to ask more questions, please reload the page to start over.
+            </div>
+          )}
+
+          {uiStage === "chat" && !(progress.tracked && progress.done && progress.is_summary) && (
             <form onSubmit={sendMessage} style={{ padding: 12, borderTop: "1px solid #e5e7eb", display: "flex", gap: 8 }}>
               <input
                 value={input}
