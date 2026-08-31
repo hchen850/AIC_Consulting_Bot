@@ -13,18 +13,21 @@ FIELD_ORDER = [f for f, _ in FIELDS]
 
 
 def build_summary(collected: dict) -> str:
-    name = collected.get("name", "The client")
+    name = collected.get("name", "")
     problem = collected.get("problem", "")
     topic = collected.get("legal_topic", "")
     stage = collected.get("stage", "")
     urgency = collected.get("urgency", "")
 
-    return (
-        f"Summary for BEACH Consultants (Legal Intake): {name} came in needing help with {problem}. "
-        f"The specific legal area is: {topic}. "
-        f"Their startup is currently at the following stage: {stage}. "
-        f"In terms of timeline, {urgency}."
-    )
+    lines = [
+        "Summary for BEACH Consultants (Legal Intake):",
+        f"- Problem: {problem}",
+        f"- Legal Topic: {topic}",
+        f"- Stage: {stage}",
+        f"- Urgency: {urgency}",
+        f"- Name: {name}",
+    ]
+    return "\n".join(lines)
 
 
 def respond(message: str, history: list[dict], collected: dict):
